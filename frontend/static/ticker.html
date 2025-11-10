@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>272 Stock Platform — Live</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --bg:#0b1020; --panel:#121a33; --line:#1a2342; --text:#eaeef5; --muted:#b8c0d9; --up:#1ecb55; --down:#ff5a5a; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:14px 16px; font-weight:600; background:var(--panel); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+    .status { font-size:14px; opacity:.9; }
+    .status.error { color:#ffb3b3; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; padding:16px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px; cursor:pointer; transition:transform .12s ease; }
+    .card:hover { transform: translateY(-2px); }
+    .sym { font-weight:700; font-size:16px; }
+    .price { margin-top:6px; font-size:18px; }
+    .delta { display:inline-block; margin-left:8px; font-size:12px; padding:2px 6px; border-radius:999px; background:#223; }
+    .delta.up { color:var(--up); }
+    .delta.down { color:var(--down); }
+    .bar { position: fixed; bottom:0; left:0; right:0; background:var(--bg); color:#fff; padding:8px 0; overflow:hidden; border-top:1px solid var(--line); }
+    .track { display:inline-block; white-space:nowrap; will-change:transform; animation: scroll 25s linear infinite; }
+    .item { display:inline-block; margin: 0 18px; font-size:14px; }
+    .item.up::after { content:" ▲"; color:var(--up); }
+    .item.down::after { content:" ▼"; color:var(--down); }
+    @keyframes scroll { 0% { transform: translateX(100%);} 100% { transform: translateX(-100%);} }
+    /* Modal */
+    .modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.5); }
+    .modal.open { display:flex; }
+    .sheet { width:min(720px,90vw); background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .close { background:#202a4a; border:none; color:var(--text); padding:6px 10px; border-radius:8px; cursor:pointer; }
+    canvas { width:100%; height:320px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>272 Live Prices</div>
+    <div id="status" class="status">Connecting…</div>
+  </header>
+
+  <div id="grid" class="grid"></div>
+
+  <div class="bar">
+    <div class="track" id="track"></div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal" aria-hidden="true">
+    <div class="sheet">
+      <div class="row">
+        <div>
+          <div id="modalSym" class="sym"></div>
+          <div id="modalPrice" class="price"></div>
+        </div>
+        <button id="closeBtn" class="close">Close</button>
+      </div>
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const grid = document.getElementById('grid');
+    const track = document.getElementById('track');
+    const modal = document.getElementById('modal');
+    const modalSym = document.getElementById('modalSym');
+    const modalPrice = document.getElementById('modalPrice');
+    const closeBtn = document.getElementById('closeBtn');
+    let chart, chartSym = null;
+
+    const state = new Map(); // sym -> {price, ts, delta}
+    const history = new Map(); // sym -> [{t, p}, ...] (rolling)
+
+    function setStatus(msg, isError=false) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status' + (isError ? ' error' : '');
+      (isError ? console.error : console.log)(msg);
+    }
+
+    function ensureHistory(sym) {
+      if (!history.has(sym)) history.set(sym, []);
+      const arr = history.get(sym);
+      if (arr.length > 240) arr.splice(0, arr.length - 240); // keep ~240 points
+      return arr;
+    }
+
+    function renderTiles() {
+      grid.innerHTML = '';
+      [...state.entries()].sort((a,b)=> a[0].localeCompare(b[0])).forEach(([sym, q]) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="sym">${sym}</div>
+          <div class="price">${q.price.toFixed(4)}
+            <span class="delta ${q.delta>0?'up':q.delta<0?'down':''}">
+              ${q.delta>0?'+':''}${q.delta.toFixed(4)}
+            </span>
+          </div>`;
+        card.addEventListener('click', ()=> openModal(sym));
+        grid.appendChild(card);
+      });
+    }
+
+    function renderTicker() {
+      track.innerHTML = '';
+      [...state.entries()].sort((a,b)=> a[0].localeCompare(b[0])).forEach(([sym, q]) => {
+        const el = document.createElement('span');
+        el.className = 'item ' + (q.delta>0?'up':(q.delta<0?'down':'')); 
+        el.textContent = `${sym} ${q.price.toFixed(4)}`;
+        track.appendChild(el);
+      });
+    }
+
+    function openModal(sym) {
+      chartSym = sym;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden','false');
+      modalSym.textContent = sym;
+      const q = state.get(sym);
+      if (q) modalPrice.textContent = q.price.toFixed(6);
+
+      const ctx = document.getElementById('chart');
+      const arr = (history.get(sym) || []).slice(-120);
+      const labels = arr.map(pt => new Date(pt.t));
+      const data = arr.map(pt => pt.p);
+
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: sym, data, tension: 0.2, pointRadius: 0 }] },
+        options: {
+          animation: false,
+          responsive: true,
+          scales: {
+            x: { type: 'time', time: { unit: 'minute' } },
+            y: { ticks: { callback:v => v.toFixed(4) } }
+          },
+          plugins: { legend: { display:false } }
+        }
+      });
+    }
+
+    function updateChart(sym, price, ts) {
+      if (!chart || chartSym !== sym) return;
+      modalPrice.textContent = price.toFixed(6);
+      const ds = chart.data.datasets[0].data;
+      const lb = chart.data.labels;
+      ds.push(price); lb.push(new Date(ts));
+      if (ds.length > 240) { ds.shift(); lb.shift(); }
+      chart.update('none');
+    }
+
+    closeBtn.addEventListener('click', () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden','true'); });
+
+    // Initial snapshot
+    fetch('/prices/now').then(async r => {
+      if (!r.ok) throw new Error(`/prices/now ${r.status}`);
+      const data = await r.json();
+      data.forEach(q => {
+        state.set(q.symbol, {price:q.price, ts:q.ts, delta:0});
+        ensureHistory(q.symbol).push({t:q.ts || Date.now(), p:q.price});
+      });
+      renderTiles(); renderTicker();
+      setStatus('Loaded snapshot. Connecting to live stream…');
+    }).catch(err => setStatus(`Snapshot error: ${err.message}`, true));
+
+    // Live SSE
+    const es = new EventSource('/prices/stream');
+    es.onopen = () => setStatus('Live stream connected.');
+    es.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'snapshot') {
+          msg.data.forEach(q => {
+            state.set(q.symbol, {price:q.price, ts:q.ts, delta:0});
+            ensureHistory(q.symbol).push({t:q.ts || Date.now(), p:q.price});
+          });
+          renderTiles(); renderTicker();
+        } else if (msg.type === 'quote') {
+          const prev = state.get(msg.symbol);
+          const prevPrice = prev?.price ?? msg.price;
+          const delta = msg.price - prevPrice;
+          state.set(msg.symbol, {price:msg.price, ts:msg.ts, delta});
+          ensureHistory(msg.symbol).push({t:msg.ts, p:msg.price});
+          renderTiles(); renderTicker(); updateChart(msg.symbol, msg.price, msg.ts);
+        } else if (msg.type === 'status') {
+          setStatus(`Backend: ${msg.msg}`);
+        }
+      } catch (e2) { setStatus(`Parse error: ${e2.message}`, true); }
+    };
+    es.onerror = () => setStatus('Live stream disconnected. Retrying…', true);
+
+    // Never stay blank on JS errors
+    window.addEventListener('error', e => setStatus(`JS error: ${e.message}`, true));
+    window.addEventListener('unhandledrejection', e => setStatus(`Promise rejection: ${e.reason}`, true));
+  </script>
+</body>
+</html>
