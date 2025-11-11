@@ -1,0 +1,112 @@
+-- to Store user information
+CREATE TABLE IF NOT EXISTS users (
+  user_id       SERIAL PRIMARY KEY,  full_name     VARCHAR(100) NOT NULL,
+  email         VARCHAR(100) UNIQUE NOT NULL,  password_hash TEXT NOT NULL,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- to store company information
+CREATE TABLE IF NOT EXISTS companies (
+    companies_id SERIAL PRIMARY KEY,    longName VARCHAR(255) NOT NULL,
+	Symbol varchar(300),    sector VARCHAR(100),
+    industry VARCHAR(150),    country VARCHAR(100),
+    marketCap NUMERIC(20,2),    dividendYield NUMERIC(10,6),
+    trailingPE NUMERIC(10,2),    beta NUMERIC(10,3),    website TEXT
+);
+
+-- to store stock price history information 
+CREATE TABLE IF NOT EXISTS stock_prices (
+    id SERIAL PRIMARY KEY,
+    companies_id INT NOT NULL REFERENCES companies(companies_id) ON DELETE CASCADE,
+    trade_timestamp TIMESTAMP NOT NULL,
+    open NUMERIC(12,4),
+    high NUMERIC(12,4),
+    low NUMERIC(12,4),
+    close NUMERIC(12,4),
+    adj_close NUMERIC(12,4),
+    volume BIGINT
+);
+
+-- companies income statmetn for dashboard
+CREATE TABLE IF NOT EXISTS income_statement (
+    id SERIAL PRIMARY KEY,
+    company_id INT REFERENCES companies(companies_id),
+    period_end_date DATE NOT NULL,
+    period_type VARCHAR(20) NOT NULL,  -- 'annual' or 'quarterly'
+    total_revenue NUMERIC(20,2),
+    cost_of_revenue NUMERIC(20,2),
+    gross_profit NUMERIC(20,2),
+    research_and_development NUMERIC(20,2),
+    selling_general_admin NUMERIC(20,2),
+    operating_income NUMERIC(20,2),
+    interest_expense NUMERIC(20,2),
+    income_before_tax NUMERIC(20,2),
+    income_tax_expense NUMERIC(20,2),
+    net_income NUMERIC(20,2),
+    diluted_eps NUMERIC(10,4)
+);
+
+
+-- companies balance sheet for dashboard
+CREATE TABLE IF NOT EXISTS balance_sheet (
+    id SERIAL PRIMARY KEY,
+    company_id INT REFERENCES companies(companies_id),
+    period_end_date DATE NOT NULL,
+    period_type VARCHAR(20) NOT NULL,  -- 'annual' or 'quarterly'
+    cash_and_cash_equivalents NUMERIC(20,2),
+    short_term_investments NUMERIC(20,2),
+    accounts_receivable NUMERIC(20,2),
+    inventory NUMERIC(20,2),
+    total_current_assets NUMERIC(20,2),
+    property_plant_equipment_net NUMERIC(20,2),
+    goodwill NUMERIC(20,2),
+    total_assets NUMERIC(20,2),
+    accounts_payable NUMERIC(20,2),
+    short_long_term_debt_total NUMERIC(20,2),
+    total_current_liabilities NUMERIC(20,2),
+    total_liabilities NUMERIC(20,2),
+    total_shareholder_equity NUMERIC(20,2),
+    retained_earnings NUMERIC(20,2)
+);
+
+-- companies cash flow for dashboard
+CREATE TABLE IF NOT EXISTS cash_flow (
+    id SERIAL PRIMARY KEY,
+    company_id INT REFERENCES companies(companies_id),
+    period_end_date DATE NOT NULL,
+    period_type VARCHAR(20) NOT NULL,  -- 'annual' or 'quarterly'
+    net_cash_from_operating_activities NUMERIC(20,2),
+    capital_expenditures NUMERIC(20,2),
+    net_cash_from_investing_activities NUMERIC(20,2),
+    net_cash_from_financing_activities NUMERIC(20,2),
+    dividends_paid NUMERIC(20,2),
+    repurchase_of_stock NUMERIC(20,2),
+    free_cash_flow NUMERIC(20,2)
+);
+
+-- To store users stock buy sell information
+CREATE TABLE IF NOT EXISTS user_trades (
+  id               SERIAL PRIMARY KEY,
+  user_id          INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  company_id       INT NOT NULL REFERENCES companies(companies_id) ON DELETE RESTRICT,
+  trade_type       VARCHAR(4) NOT NULL CHECK (trade_type IN ('BUY','SELL')),
+  quantity         NUMERIC(18,6) NOT NULL CHECK (quantity > 0),
+  price            NUMERIC(12,4) NOT NULL,          -- price per share
+  total_price      NUMERIC(20,4) NOT NULL,          -- quantity * price
+  trade_timestamp  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
+-- To store users balance information
+CREATE TABLE IF NOT EXISTS user_balances (
+  id               SERIAL PRIMARY KEY,
+  user_id          INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  currency         CHAR(3) NOT NULL DEFAULT 'USD',
+  available_balance NUMERIC(20,2) NOT NULL DEFAULT 0,
+  total_balance     NUMERIC(20,2) NOT NULL DEFAULT 0,  -- if you hold pending funds
+  updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (user_id, currency)
+);
+
+
