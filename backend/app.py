@@ -108,6 +108,10 @@ ws_thread = FinnhubThread(FINNHUB_TOKEN, SYMBOLS)
 ws_thread.start()
 
 # ---- Flask routes ----
+@app.route('/')
+def index():
+    return app.send_static_file('ticker.html')
+
 @app.get("/prices/now")
 def prices_now():
     # snapshot for initial render
