@@ -1,0 +1,15 @@
+# Root level dockerignore
+.git
+.gitignore
+README.md
+DOCKER_README.md
+DOCKER_SETUP_SUMMARY.md
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode
+.idea
+
+

@@ -1,0 +1,79 @@
+services:
+  # Backend service (Python/Flask)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mock-stock-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - FLASK_ENV=development
+      - PORT=8080
+      - FLASK_PORT=8080
+      - FINNHUB_TOKEN=${FINNHUB_TOKEN:-}
+      - SYMBOLS=${SYMBOLS:-AAPL,MSFT,GOOGL,TSLA}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount code for hot reload (development)
+      - ./backend:/app
+      - /app/__pycache__
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; import sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').getcode() == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Frontend service (Next.js - Development)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: mock-stock-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://backend:8080
+      - VITE_API_URL=http://backend:8080
+      - BACKEND_URL=http://backend:8080
+    volumes:
+      # Mount code for hot reload
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Frontend service (Production build with Nginx)
+  frontend_prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: mock-stock-frontend-prod
+    ports:
+      - "8081:8081"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8080
+      - VITE_API_URL=http://backend:8080
+    networks:
+      - app-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+    profiles:
+      - production
+
+networks:
+  app-network:
+    driver: bridge
+

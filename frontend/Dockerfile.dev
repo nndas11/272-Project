@@ -1,0 +1,25 @@
+# Development Dockerfile for Next.js frontend
+# Supports hot reload and fast development iteration
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies first (cached layer)
+# Try npm ci first, fall back to npm install if lock file is out of sync
+COPY package.json package-lock.json* ./
+RUN if [ -f package-lock.json ]; then \
+      npm ci || npm install; \
+    else \
+      npm install; \
+    fi
+
+# Copy source code (will be overridden by volume mount in docker-compose)
+COPY . .
+
+# Expose Next.js dev server port
+EXPOSE 3000
+
+# Start development server with hot reload
+CMD ["npm", "run", "dev"]
+
