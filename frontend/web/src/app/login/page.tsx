@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
+import { useTheme } from "../theme/ThemeProvider";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5050";
 
 export default function LoginPage() {
+  const { colors } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -38,16 +40,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ display: "grid", placeItems: "center", minHeight: "100vh" }}>
+    <div style={{ display: "grid", placeItems: "center", minHeight: "100vh", background: colors.backgroundPrimary, color: colors.textPrimary }}>
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, width: 320 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 600 }}>Login</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.textPrimary }}>Login</h1>
         <input
           placeholder="Email"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          style={{ padding: 8, border: "1px solid #ddd", borderRadius: 6 }}
+          style={{ padding: 8, border: `1px solid ${colors.formInputBorder}`, borderRadius: 6, background: colors.formInputBg, color: colors.formInputText }}
         />
         <input
           placeholder="Password"
@@ -55,9 +57,9 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          style={{ padding: 8, border: "1px solid #ddd", borderRadius: 6 }}
+          style={{ padding: 8, border: `1px solid ${colors.formInputBorder}`, borderRadius: 6, background: colors.formInputBg, color: colors.formInputText }}
         />
-        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: colors.textSecondary }}>
           <input
             type="checkbox"
             checked={showPassword}
@@ -69,12 +71,12 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          style={{ padding: 10, borderRadius: 6, background: "#111", color: "#fff" }}
+          style={{ padding: 10, borderRadius: 6, background: colors.primary, color: colors.textInverse, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}
         >
           {loading ? "Signing in..." : "Sign in"}
         </button>
-        {error && <div style={{ color: "#b00020" }}>{error}</div>}
-        <a href="/signup" style={{ color: "#06c" }}>Create an account</a>
+        {error && <div style={{ color: colors.danger, padding: 8, background: colors.dangerLight, borderRadius: 4, fontSize: 14 }}>{error}</div>}
+        <a href="/signup" style={{ color: colors.primary, textDecoration: 'none', textAlign: 'center', fontSize: 14 }}>Create an account</a>
       </form>
     </div>
   );

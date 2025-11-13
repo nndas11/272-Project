@@ -267,6 +267,219 @@ def auth_me():
     finally:
         conn.close()
 
+# ---- User Profile Management ----
+@app.put("/user/profile")
+def update_profile():
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    data = request.get_json(silent=True) or {}
+    full_name = data.get("full_name")
+    email = (data.get("email") or "").strip().lower()
+    
+    if not full_name or not email:
+        return jsonify({"error": "missing_fields"}), 400
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                # Check if email is already taken by another user
+                cur.execute("SELECT user_id FROM users WHERE email=%s AND user_id!=%s", (email, user_id))
+                if cur.fetchone():
+                    return jsonify({"error": "email_exists"}), 409
+                
+                # Update user
+                cur.execute(
+                    """
+                    UPDATE users SET full_name=%s, email=%s
+                    WHERE user_id=%s
+                    RETURNING user_id, email, full_name
+                    """,
+                    (full_name, email, user_id)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"error": "user_not_found"}), 404
+                
+                user_id, email, full_name = row
+        return jsonify({"user": {"user_id": user_id, "email": email, "full_name": full_name}})
+    finally:
+        conn.close()
+
+# ---- User Balances Management ----
+@app.get("/user/balances")
+def get_balances():
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, user_id, currency, available_balance, total_balance, updated_at
+                    FROM user_balances
+                    WHERE user_id=%s
+                    ORDER BY updated_at DESC
+                    """,
+                    (user_id,)
+                )
+                rows = cur.fetchall()
+                balances = [
+                    {
+                        "id": row[0],
+                        "user_id": row[1],
+                        "currency": row[2],
+                        "available_balance": float(row[3]),
+                        "total_balance": float(row[4]),
+                        "updated_at": row[5].isoformat() if row[5] else None,
+                    }
+                    for row in rows
+                ]
+        return jsonify(balances)
+    finally:
+        conn.close()
+
+@app.post("/user/balances")
+def create_balance():
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    data = request.get_json(silent=True) or {}
+    
+    currency = (data.get("currency") or "USD").upper()
+    available_balance = float(data.get("available_balance", 0))
+    total_balance = float(data.get("total_balance", available_balance))
+    
+    if not currency or len(currency) != 3:
+        return jsonify({"error": "invalid_currency"}), 400
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO user_balances (user_id, currency, available_balance, total_balance)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (user_id, currency) DO UPDATE
+                    SET available_balance = EXCLUDED.available_balance,
+                        total_balance = EXCLUDED.total_balance,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING id, user_id, currency, available_balance, total_balance, updated_at
+                    """,
+                    (user_id, currency, available_balance, total_balance)
+                )
+                row = cur.fetchone()
+                balance_id, user_id, currency, avail, total, updated = row
+        
+        return jsonify({
+            "id": balance_id,
+            "user_id": user_id,
+            "currency": currency,
+            "available_balance": float(avail),
+            "total_balance": float(total),
+            "updated_at": updated.isoformat() if updated else None,
+        }), 201
+    finally:
+        conn.close()
+
+@app.delete("/user/balances/<int:balance_id>")
+def delete_balance(balance_id):
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                # Verify ownership
+                cur.execute("SELECT user_id FROM user_balances WHERE id=%s", (balance_id,))
+                row = cur.fetchone()
+                if not row or row[0] != user_id:
+                    return jsonify({"error": "not_found"}), 404
+                
+                # Delete
+                cur.execute("DELETE FROM user_balances WHERE id=%s", (balance_id,))
+        
+        return jsonify({"message": "deleted"}), 200
+    finally:
+        conn.close()
+
+# ---- User Trades Management ----
+@app.get("/user/trades")
+def get_trades():
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT ut.id, ut.user_id, ut.company_id, ut.trade_type, ut.quantity, 
+                           ut.price, ut.total_price, ut.trade_timestamp, c.symbol
+                    FROM user_trades ut
+                    LEFT JOIN companies c ON ut.company_id = c.companies_id
+                    WHERE ut.user_id=%s
+                    ORDER BY ut.trade_timestamp DESC
+                    """,
+                    (user_id,)
+                )
+                rows = cur.fetchall()
+                trades = [
+                    {
+                        "id": row[0],
+                        "user_id": row[1],
+                        "company_id": row[2],
+                        "trade_type": row[3],
+                        "quantity": float(row[4]),
+                        "price": float(row[5]),
+                        "total_price": float(row[6]),
+                        "trade_timestamp": row[7].isoformat() if row[7] else None,
+                        "symbol": row[8],
+                    }
+                    for row in rows
+                ]
+        return jsonify(trades)
+    finally:
+        conn.close()
+
+@app.delete("/user/trades/<int:trade_id>")
+def delete_trade(trade_id):
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                # Verify ownership
+                cur.execute("SELECT user_id FROM user_trades WHERE id=%s", (trade_id,))
+                row = cur.fetchone()
+                if not row or row[0] != user_id:
+                    return jsonify({"error": "not_found"}), 404
+                
+                # Delete
+                cur.execute("DELETE FROM user_trades WHERE id=%s", (trade_id,))
+        
+        return jsonify({"message": "deleted"}), 200
+    finally:
+        conn.close()
+
 # graceful shutdown
 def _shutdown(*_):
     ws_thread.stop()
