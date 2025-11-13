@@ -1,15 +1,24 @@
 import json, os, time, threading, queue, atexit, signal
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Set
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 import websocket  # from websocket-client
+import psycopg2
+import bcrypt
+import jwt
 
 load_dotenv()
 
 FINNHUB_TOKEN = os.environ.get("FINNHUB_TOKEN", "")
 SYMBOLS = os.environ.get("SYMBOLS", "AAPL,MSFT,GOOGL,TSLA").split(",")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = int(os.getenv("DB_PORT")) if os.getenv("DB_PORT") else None
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
+SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 
 if not FINNHUB_TOKEN:
     raise RuntimeError("Set FINNHUB_TOKEN in .env")
@@ -163,6 +172,100 @@ def serve_ticker():
 @app.route('/static/<path:path>')
 def serve_static(path):
     return app.send_static_file(path)
+
+def _db_conn():
+    return psycopg2.connect(host=DB_HOST, port=DB_PORT, user=DB_USER, password=DB_PASS, dbname=DB_NAME)
+
+def _make_token(user_id: int, email: str):
+    payload = {"sub": user_id, "email": email, "exp": datetime.utcnow() + timedelta(hours=12)}
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+
+def _parse_token(auth_header: str):
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split(" ", 1)[1]
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    except Exception:
+        return None
+
+@app.post("/auth/signup")
+def auth_signup():
+    data = request.get_json(silent=True) or {}
+    full_name = data.get("full_name") or data.get("name")
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password")
+    if not email or not password or not full_name:
+        return jsonify({"error": "missing_fields"}), 400
+    pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id FROM users WHERE email=%s", (email,))
+                if cur.fetchone():
+                    return jsonify({"error": "email_exists"}), 409
+                cur.execute(
+                    """
+                    INSERT INTO users (full_name, email, password_hash)
+                    VALUES (%s, %s, %s)
+                    RETURNING user_id
+                    """,
+                    (full_name, email, pw_hash)
+                )
+                user_id = cur.fetchone()[0]
+        token = _make_token(user_id, email)
+        return jsonify({"token": token, "user": {"user_id": user_id, "email": email, "full_name": full_name}})
+    finally:
+        conn.close()
+
+@app.post("/auth/login")
+def auth_login():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    if not email or not password:
+        return jsonify({"error": "missing_fields"}), 400
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id, full_name, password_hash FROM users WHERE email=%s", (email,))
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"error": "invalid_credentials"}), 401
+                user_id, full_name, password_hash = row
+                ok = False
+                try:
+                    ok = bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+                except Exception:
+                    ok = False
+                if not ok:
+                    return jsonify({"error": "invalid_credentials"}), 401
+        token = _make_token(user_id, email)
+        return jsonify({"token": token, "user": {"user_id": user_id, "email": email, "full_name": full_name}})
+    finally:
+        conn.close()
+
+@app.get("/auth/me")
+def auth_me():
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    email = payload.get("email")
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT full_name FROM users WHERE user_id=%s", (user_id,))
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"error": "unauthorized"}), 401
+                full_name = row[0]
+        return jsonify({"user": {"user_id": user_id, "email": email, "full_name": full_name}})
+    finally:
+        conn.close()
 
 # graceful shutdown
 def _shutdown(*_):
