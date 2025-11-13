@@ -6,6 +6,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5050";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,7 +25,10 @@ export default function LoginPage() {
         setError(data?.error || "Login failed");
         return;
       }
+      // Store token in localStorage for client-side access
       localStorage.setItem("token", data.token);
+      // Backend should set HttpOnly cookie (more secure)
+      // Frontend just redirects
       window.location.href = "/dashboard";
     } catch (err) {
       setError("Network error");
@@ -47,12 +51,21 @@ export default function LoginPage() {
         />
         <input
           placeholder="Password"
-          type="password"
+          type={showPassword ? "text" : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           style={{ padding: 8, border: "1px solid #ddd", borderRadius: 6 }}
         />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={showPassword}
+            onChange={(e) => setShowPassword(e.target.checked)}
+            style={{ cursor: "pointer" }}
+          />
+          <span style={{ fontSize: 14 }}>Show password</span>
+        </label>
         <button
           type="submit"
           disabled={loading}
