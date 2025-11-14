@@ -222,6 +222,25 @@ export default function Header() {
                       📊 Dashboard
                     </Link>
 
+                    <Link
+                      href="/recommendations"
+                      onClick={() => setShowDropdown(false)}
+                      style={{
+                        display: "block",
+                        padding: "10px 16px",
+                        textDecoration: "none",
+                        color: colors.textPrimary,
+                        fontSize: 14,
+                        borderBottom: `1px solid ${colors.neutralBorder}`,
+                        cursor: "pointer",
+                        transition: "background 0.2s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = colors.hoverBg)}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    >
+                      💡 Recommendations
+                    </Link>
+
                     <button
                       onClick={handleLogout}
                       style={{
