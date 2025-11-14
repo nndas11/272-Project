@@ -90,7 +90,6 @@ class FinnhubThread(threading.Thread):
     def on_open(self, ws):
         for s in self.symbols:
             ws.send(json.dumps({"type":"subscribe", "symbol": s}))
-        # optional: send a status event
         _broadcast({"type":"status","msg":"connected","at":int(time.time()*1000)})
 
     def on_message(self, ws, message):
@@ -162,7 +161,24 @@ def prices_stream():
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok", "symbols": SYMBOLS})
+    return jsonify({
+        "status": "ok",
+        "symbols": SYMBOLS,
+        "live_count": len(latest_quotes),
+        "keys": list(latest_quotes.keys())
+    })
+
+@app.get("/stocks/quote/<symbol>")
+def get_live_quote(symbol: str):
+    sym = symbol.upper().strip()
+    q = latest_quotes.get(sym)
+    if q:
+        return jsonify(q)
+    return jsonify({"error": "quote_not_available", "symbol": sym}), 404
+
+@app.get("/stocks/quotes")
+def list_live_quotes():
+    return jsonify(sorted(list(latest_quotes.values()), key=lambda x: x["symbol"]))
 
 @app.route('/ticker')
 @app.route('/ticker.html')
@@ -477,6 +493,237 @@ def delete_trade(trade_id):
                 cur.execute("DELETE FROM user_trades WHERE id=%s", (trade_id,))
         
         return jsonify({"message": "deleted"}), 200
+    finally:
+        conn.close()
+
+# ---- Stock Data Endpoints ----
+@app.get("/stocks/companies")
+def get_companies():
+    """Return list of all companies with their basic info."""
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT companies_id, symbol, longName, sector, industry, country, marketCap
+                    FROM companies
+                    ORDER BY symbol
+                """)
+                cols = [desc[0] for desc in cur.description]
+                rows = cur.fetchall()
+                companies = [dict(zip(cols, row)) for row in rows]
+        return jsonify(companies)
+    finally:
+        conn.close()
+
+@app.get("/stocks/prices/<symbol>")
+def get_stock_prices(symbol):
+    """
+    Get historical stock prices for a symbol.
+    Optional query params: limit (default 100), days (default 365)
+    """
+    limit = request.args.get("limit", 100, type=int)
+    days = request.args.get("days", 365, type=int)
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                # Get company_id from symbol
+                cur.execute("SELECT companies_id FROM companies WHERE symbol=%s", (symbol.upper(),))
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"error": "symbol_not_found"}), 404
+                company_id = row[0]
+                
+                # Fetch recent prices
+                cur.execute("""
+                    SELECT trade_timestamp, open, high, low, close, adj_close, volume
+                    FROM stock_prices
+                    WHERE companies_id=%s
+                      AND trade_timestamp >= NOW() - INTERVAL '%s days'
+                    ORDER BY trade_timestamp DESC
+                    LIMIT %s
+                """, (company_id, days, limit))
+                
+                cols = [desc[0] for desc in cur.description]
+                rows = cur.fetchall()
+                prices = [dict(zip(cols, row)) for row in rows]
+                
+                # Convert timestamps to ISO format strings for JSON serialization
+                for p in prices:
+                    if p.get('trade_timestamp'):
+                        p['trade_timestamp'] = p['trade_timestamp'].isoformat()
+                
+        return jsonify({"symbol": symbol.upper(), "prices": prices})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.get("/stocks/prices")
+def get_all_latest_prices():
+    """Get the latest price for each company."""
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT 
+                        c.symbol, 
+                        c.longName,
+                        sp.trade_timestamp,
+                        sp.open, sp.high, sp.low, sp.close, sp.adj_close, sp.volume
+                    FROM companies c
+                    LEFT JOIN (
+                        SELECT companies_id, trade_timestamp, open, high, low, close, adj_close, volume
+                        FROM stock_prices
+                        WHERE (companies_id, trade_timestamp) IN (
+                            SELECT companies_id, MAX(trade_timestamp)
+                            FROM stock_prices
+                            GROUP BY companies_id
+                        )
+                    ) sp ON c.companies_id = sp.companies_id
+                    ORDER BY c.symbol
+                """)
+                
+                cols = [desc[0] for desc in cur.description]
+                rows = cur.fetchall()
+                data = []
+                for row in rows:
+                    d = dict(zip(cols, row))
+                    if d.get('trade_timestamp'):
+                        d['trade_timestamp'] = d['trade_timestamp'].isoformat()
+                    data.append(d)
+                
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# ---- Trading Endpoints (Buy/Sell) ----
+@app.post("/stocks/buy")
+def buy_stock():
+    """Buy a stock. Requires auth token."""
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or "").strip().upper()
+    quantity = data.get("quantity", 0)
+    price = data.get("price", 0)  # price per share at time of purchase
+    
+    if not symbol or quantity <= 0 or price <= 0:
+        return jsonify({"error": "invalid_params"}), 400
+    
+    total_cost = quantity * price
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                # Get company_id from symbol
+                cur.execute("SELECT companies_id FROM companies WHERE symbol=%s", (symbol,))
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"error": "symbol_not_found"}), 404
+                company_id = row[0]
+                
+                # Check user balance
+                cur.execute("SELECT available_balance FROM user_balances WHERE user_id=%s AND currency='USD'", (user_id,))
+                balance_row = cur.fetchone()
+                if not balance_row:
+                    return jsonify({"error": "no_balance"}), 400
+                
+                available_balance = float(balance_row[0])
+                if available_balance < total_cost:
+                    return jsonify({"error": "insufficient_balance", "required": total_cost, "available": available_balance}), 400
+                
+                # Insert trade
+                cur.execute("""
+                    INSERT INTO user_trades (user_id, company_id, trade_type, quantity, price, total_price, trade_timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    RETURNING id
+                """, (user_id, company_id, "BUY", quantity, price, total_cost))
+                trade_id = cur.fetchone()[0]
+                
+                # Update balance
+                cur.execute("""
+                    UPDATE user_balances
+                    SET available_balance = available_balance - %s,
+                        total_balance = total_balance - %s
+                    WHERE user_id=%s AND currency='USD'
+                """, (total_cost, total_cost, user_id))
+        
+        return jsonify({"message": "buy_successful", "trade_id": trade_id, "total_cost": total_cost})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.post("/stocks/sell")
+def sell_stock():
+    """Sell a stock. Requires auth token."""
+    payload = _parse_token(request.headers.get("Authorization"))
+    if not payload:
+        return jsonify({"error": "unauthorized"}), 401
+    user_id = payload.get("sub")
+    
+    data = request.get_json(silent=True) or {}
+    symbol = (data.get("symbol") or "").strip().upper()
+    quantity = data.get("quantity", 0)
+    price = data.get("price", 0)  # price per share at time of sale
+    
+    if not symbol or quantity <= 0 or price <= 0:
+        return jsonify({"error": "invalid_params"}), 400
+    
+    total_proceeds = quantity * price
+    
+    conn = _db_conn()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                # Get company_id from symbol
+                cur.execute("SELECT companies_id FROM companies WHERE symbol=%s", (symbol,))
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"error": "symbol_not_found"}), 404
+                company_id = row[0]
+                
+                # Check user has enough shares (sum of BUY - SELL for this company)
+                cur.execute("""
+                    SELECT COALESCE(SUM(CASE WHEN trade_type='BUY' THEN quantity ELSE -quantity END), 0)
+                    FROM user_trades
+                    WHERE user_id=%s AND company_id=%s
+                """, (user_id, company_id))
+                shares_row = cur.fetchone()
+                available_shares = int(shares_row[0]) if shares_row else 0
+                
+                if available_shares < quantity:
+                    return jsonify({"error": "insufficient_shares", "required": quantity, "available": available_shares}), 400
+                
+                # Insert trade
+                cur.execute("""
+                    INSERT INTO user_trades (user_id, company_id, trade_type, quantity, price, total_price, trade_timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    RETURNING id
+                """, (user_id, company_id, "SELL", quantity, price, total_proceeds))
+                trade_id = cur.fetchone()[0]
+                
+                # Update balance (add proceeds)
+                cur.execute("""
+                    UPDATE user_balances
+                    SET available_balance = available_balance + %s,
+                        total_balance = total_balance + %s
+                    WHERE user_id=%s AND currency='USD'
+                """, (total_proceeds, total_proceeds, user_id))
+        
+        return jsonify({"message": "sell_successful", "trade_id": trade_id, "total_proceeds": total_proceeds})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
