@@ -177,6 +177,7 @@ def get_live_quote(symbol: str):
     return jsonify({"error":"quote_not_available","symbol": sym}), 404
 
 # graceful shutdown
+
 def _shutdown(*_):
     ws_thread.stop()
     os._exit(0)

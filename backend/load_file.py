@@ -62,32 +62,32 @@ users = [
     ("Ethan Williams", "ethan.williams@example.com", "pbkdf2_sha256$260000$mno345$yz012", "2025-11-10 07:55:20")
 ]
 
-# --- Insert data ---
-try:
-    # Connect to PostgreSQL
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD
-    )
-    cursor = conn.cursor()
+# # --- Insert data ---
+# try:
+#     # Connect to PostgreSQL
+#     conn = psycopg2.connect(
+#         host=DB_HOST,
+#         database=DB_NAME,
+#         user=DB_USER,
+#         password=DB_PASSWORD
+#     )
+#     cursor = conn.cursor()
 
-    # Insert query
-    insert_query = """
-        INSERT INTO users (full_name, email, password_hash, created_at)
-        VALUES (%s, %s, %s, %s)
-    """
+#     # Insert query
+#     insert_query = """
+#         INSERT INTO users (full_name, email, password_hash, created_at)
+#         VALUES (%s, %s, %s, %s)
+#     """
 
-    # Execute insert for all rows
-    cursor.executemany(insert_query, users)
+#     # Execute insert for all rows
+#     cursor.executemany(insert_query, users)
 
-    # Commit changes
-    conn.commit()
-    print(f"{cursor.rowcount} records inserted successfully!")
+#     # Commit changes
+#     conn.commit()
+#     print(f"{cursor.rowcount} records inserted successfully!")
 
-except Exception as e:
-    print("❌ Error inserting data:", e)
+# except Exception as e:
+#     print("❌ Error inserting data:", e)
 
 # Commit changes and close connection
 conn.commit()
