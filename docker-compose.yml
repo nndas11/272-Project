@@ -34,7 +34,7 @@ services:
       DB_NAME: stocks_db
       FINNHUB_TOKEN: ${FINNHUB_TOKEN}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-prod}
-      SYMBOLS: ${SYMBOLS:-AAPL,MSFT,GOOGL,TSLA}
+      SYMBOLS: ${SYMBOLS:-AAPL,MSFT,GOOGL,TSLA,BINANCE:BTCUSDT,BINANCE:ETHUSDT,BINANCE:SOLUSDT}
     ports:
       - "5050:5050"
     depends_on:
