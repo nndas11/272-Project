@@ -41,6 +41,7 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
+  const [dataVersion, setDataVersion] = useState(0);
 
   // Edit mode state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -108,7 +109,7 @@ export default function ProfilePage() {
     };
 
     fetchUserData();
-  }, [token, router]);
+  }, [token, router, dataVersion]);
 
   // Handle profile update
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -137,6 +138,7 @@ export default function ProfilePage() {
       setUser(updated.user);
       setIsEditingProfile(false);
       setSuccess("Profile updated successfully!");
+      setDataVersion((v) => v + 1);
       setTimeout(() => setSuccess(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
@@ -169,6 +171,7 @@ export default function ProfilePage() {
       setIsAddingBalance(false);
       setNewAmount("");
       setSuccess("Balance added successfully!");
+      setDataVersion((v) => v + 1);
       setTimeout(() => setSuccess(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add balance");
@@ -189,6 +192,7 @@ export default function ProfilePage() {
 
       setBalances(balances.filter((b) => b.id !== balanceId));
       setSuccess("Balance deleted successfully!");
+      setDataVersion((v) => v + 1);
       setTimeout(() => setSuccess(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
@@ -209,6 +213,7 @@ export default function ProfilePage() {
 
       setTrades(trades.filter((t) => t.id !== tradeId));
       setSuccess("Trade deleted successfully!");
+      setDataVersion((v) => v + 1);
       setTimeout(() => setSuccess(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
@@ -237,7 +242,8 @@ export default function ProfilePage() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto", background: colors.backgroundPrimary }}>
+    <div style={{ minHeight: "100vh", background: colors.backgroundPrimary, color: colors.textPrimary }}>
+      <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, borderBottom: `2px solid ${colors.neutralBorder}`, paddingBottom: 16 }}>
         <div>
@@ -623,6 +629,7 @@ export default function ProfilePage() {
         >
           ← Back to Dashboard
         </button>
+      </div>
       </div>
     </div>
   );
