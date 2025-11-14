@@ -113,12 +113,23 @@ export default function DashboardPage() {
                 </thead>
                 <tbody>
                   {positions.map((p) => (
+<<<<<<< Updated upstream
                     <tr key={p.symbol} style={{ borderBottom: "1px solid #f2f2f2" }}>
                       <td style={{ padding: 8, fontWeight: 600 }}>{p.symbol}</td>
                       <td style={{ padding: 8 }}>{p.qty}</td>
                       <td style={{ padding: 8 }}>${p.avgCost.toFixed(2)}</td>
                       <td style={{ padding: 8 }}>${p.last.toFixed(2)}</td>
                       <td style={{ padding: 8, color: p.pnl >= 0 ? "#087443" : "#b00020" }}>${p.pnl.toFixed(2)}</td>
+=======
+                    <tr key={p.symbol} style={{ borderBottom: `1px solid ${colors.neutralLight}` }}>
+                      <td style={{ padding: 8, fontWeight: 600, color: colors.textPrimary }}>
+                        <a href={`/prices/${p.symbol}`} style={{ color: colors.textPrimary, textDecoration: 'none' }}>{p.symbol}</a>
+                      </td>
+                      <td style={{ padding: 8, color: colors.textPrimary }}>{p.qty}</td>
+                      <td style={{ padding: 8, color: colors.textPrimary }}>${p.avgCost.toFixed(2)}</td>
+                      <td style={{ padding: 8, color: colors.textPrimary }}>${p.last.toFixed(2)}</td>
+                      <td style={{ padding: 8, color: p.pnl >= 0 ? colors.success : colors.danger }}>${p.pnl.toFixed(2)}</td>
+>>>>>>> Stashed changes
                     </tr>
                   ))}
                 </tbody>
@@ -134,8 +145,15 @@ export default function DashboardPage() {
                 {trades.map((t) => (
                   <div key={t.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", padding: 8, borderBottom: "1px solid #f6f6f6" }}>
                     <div>{t.time}</div>
+<<<<<<< Updated upstream
                     <div style={{ color: t.type === "BUY" ? "#087443" : "#b00020" }}>{t.type}</div>
                     <div style={{ fontWeight: 600 }}>{t.symbol}</div>
+=======
+                    <div style={{ color: t.type === "BUY" ? colors.success : colors.danger }}>{t.type}</div>
+                    <div style={{ fontWeight: 600 }}>
+                      <a href={`/prices/${t.symbol}`} style={{ color: colors.textPrimary, textDecoration: 'none' }}>{t.symbol}</a>
+                    </div>
+>>>>>>> Stashed changes
                     <div>{t.qty}</div>
                     <div>${t.price.toFixed(2)}</div>
                   </div>
@@ -147,8 +165,15 @@ export default function DashboardPage() {
               <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Watchlist</h2>
               <div style={{ border: "1px solid #eee", borderRadius: 8 }}>
                 {watchlist.map((w) => (
+<<<<<<< Updated upstream
                   <div key={w.symbol} style={{ display: "flex", justifyContent: "space-between", padding: 8, borderBottom: "1px solid #f6f6f6" }}>
                     <div style={{ fontWeight: 600 }}>{w.symbol}</div>
+=======
+                  <div key={w.symbol} style={{ display: "flex", justifyContent: "space-between", padding: 8, borderBottom: `1px solid ${colors.neutralLight}`, color: colors.textPrimary }}>
+                    <div style={{ fontWeight: 600 }}>
+                      <a href={`/prices/${w.symbol}`} style={{ color: colors.textPrimary, textDecoration: 'none' }}>{w.symbol}</a>
+                    </div>
+>>>>>>> Stashed changes
                     <div>${w.last.toFixed(2)}</div>
                     <div style={{ color: w.change >= 0 ? "#087443" : "#b00020" }}>{w.change >= 0 ? "+" : ""}{w.change.toFixed(2)}%</div>
                   </div>
