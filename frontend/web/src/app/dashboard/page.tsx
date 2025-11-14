@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useTheme } from "../theme/ThemeProvider";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5050";
 
@@ -7,16 +8,17 @@ type MeResponse = {
   user: { user_id: number; email: string; full_name: string };
 };
 
-function Card({ title, value, valueColor }: { title: string; value: string; valueColor?: string }) {
+function Card({ title, value, valueColor, colors }: { title: string; value: string; valueColor?: string; colors: any }) {
   return (
-    <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 12 }}>
-      <div style={{ fontSize: 12, color: "#666" }}>{title}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: valueColor || "inherit" }}>{value}</div>
+    <div style={{ border: `1px solid ${colors.neutralBorder}`, borderRadius: 8, padding: 12, background: colors.backgroundPrimary }}>
+      <div style={{ fontSize: 12, color: colors.textSecondary }}>{title}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: valueColor || colors.textPrimary }}>{value}</div>
     </div>
   );
 }
 
 export default function DashboardPage() {
+  const { colors } = useTheme();
   const [me, setMe] = useState<MeResponse["user"] | null>(null);
   const [error, setError] = useState("");
 
@@ -77,38 +79,43 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700 }}>Dashboard</h1>
+    <div style={{ padding: 24, background: colors.backgroundPrimary, color: colors.textPrimary, minHeight: '100vh' }}>
+      <h1 style={{ fontSize: 22, fontWeight: 700, color: colors.textPrimary }}>Dashboard</h1>
       {me ? (
         <div style={{ marginTop: 12, display: "grid", gap: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <div>Welcome, {me.full_name}</div>
-              <div style={{ color: "#666" }}>{me.email}</div>
+              <div style={{ color: colors.textPrimary }}>Welcome, {me.full_name}</div>
+              <div style={{ color: colors.textSecondary }}>{me.email}</div>
             </div>
-            <button onClick={logout} style={{ padding: 8, borderRadius: 6, border: '1px solid #ddd' }}>Logout</button>
+            <div style={{ display: "flex", gap: 12 }}>
+              <a href="/profile" style={{ padding: 8, borderRadius: 6, border: `1px solid ${colors.primary}`, background: colors.primaryLight, color: colors.primary, textDecoration: 'none', fontWeight: 600, cursor: 'pointer' }}>
+                👤 Profile
+              </a>
+              <button onClick={logout} style={{ padding: 8, borderRadius: 6, border: `1px solid ${colors.neutralBorder}`, background: colors.backgroundSecondary, color: colors.textPrimary }}>Logout</button>
+            </div>
           </div>
 
           {/* Summary cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-            <Card title="Total Balance" value={`$${summary.totalBalance.toLocaleString()}`} />
-            <Card title="Day P&L" value={`$${summary.dayPnL.toLocaleString()} (${summary.dayPnLPercent.toFixed(2)}%)`} valueColor={summary.dayPnL >= 0 ? "#087443" : "#b00020"} />
-            <Card title="Cash" value={`$${summary.cash.toLocaleString()}`} />
-            <Card title="Positions" value={`${positions.length}`} />
+            <Card colors={colors} title="Total Balance" value={`$${summary.totalBalance.toLocaleString()}`} />
+            <Card colors={colors} title="Day P&L" value={`$${summary.dayPnL.toLocaleString()} (${summary.dayPnLPercent.toFixed(2)}%)`} valueColor={summary.dayPnL >= 0 ? colors.success : colors.danger} />
+            <Card colors={colors} title="Cash" value={`$${summary.cash.toLocaleString()}`} />
+            <Card colors={colors} title="Positions" value={`${positions.length}`} />
           </div>
 
           {/* Positions table */}
           <section>
-            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Positions</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: colors.textPrimary }}>Positions</h2>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #eee" }}>
-                    <th style={{ padding: 8 }}>Symbol</th>
-                    <th style={{ padding: 8 }}>Qty</th>
-                    <th style={{ padding: 8 }}>Avg Cost</th>
-                    <th style={{ padding: 8 }}>Last</th>
-                    <th style={{ padding: 8 }}>P&L</th>
+                  <tr style={{ textAlign: "left", borderBottom: `1px solid ${colors.neutralBorder}` }}>
+                    <th style={{ padding: 8, color: colors.textPrimary }}>Symbol</th>
+                    <th style={{ padding: 8, color: colors.textPrimary }}>Qty</th>
+                    <th style={{ padding: 8, color: colors.textPrimary }}>Avg Cost</th>
+                    <th style={{ padding: 8, color: colors.textPrimary }}>Last</th>
+                    <th style={{ padding: 8, color: colors.textPrimary }}>P&L</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -131,10 +138,10 @@ export default function DashboardPage() {
           {/* Grid: Recent trades + Watchlist */}
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
             <section>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Recent Trades</h2>
-              <div style={{ border: "1px solid #eee", borderRadius: 8 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: colors.textPrimary }}>Recent Trades</h2>
+              <div style={{ border: `1px solid ${colors.neutralBorder}`, borderRadius: 8, background: colors.backgroundSecondary }}>
                 {trades.map((t) => (
-                  <div key={t.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", padding: 8, borderBottom: "1px solid #f6f6f6" }}>
+                  <div key={t.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", padding: 8, borderBottom: `1px solid ${colors.neutralLight}`, color: colors.textPrimary }}>
                     <div>{t.time}</div>
                     <div style={{ color: t.type === "BUY" ? "#087443" : "#b00020" }}>{t.type}</div>
                     <div style={{ fontWeight: 600 }}>
@@ -148,15 +155,15 @@ export default function DashboardPage() {
             </section>
 
             <section>
-              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Watchlist</h2>
-              <div style={{ border: "1px solid #eee", borderRadius: 8 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8, color: colors.textPrimary }}>Watchlist</h2>
+              <div style={{ border: `1px solid ${colors.neutralBorder}`, borderRadius: 8, background: colors.backgroundSecondary }}>
                 {watchlist.map((w) => (
                   <div key={w.symbol} style={{ display: "flex", justifyContent: "space-between", padding: 8, borderBottom: "1px solid #f6f6f6" }}>
                     <div style={{ fontWeight: 600 }}>
                       <a href={`/prices/${w.symbol}`} style={{ color: "inherit", textDecoration: "none" }}>{w.symbol}</a>
                     </div>
                     <div>${w.last.toFixed(2)}</div>
-                    <div style={{ color: w.change >= 0 ? "#087443" : "#b00020" }}>{w.change >= 0 ? "+" : ""}{w.change.toFixed(2)}%</div>
+                    <div style={{ color: w.change >= 0 ? colors.success : colors.danger }}>{w.change >= 0 ? "+" : ""}{w.change.toFixed(2)}%</div>
                   </div>
                 ))}
               </div>
@@ -164,12 +171,14 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : (
-        <div style={{ marginTop: 12 }}>{error || "Loading..."}</div>
+        <div style={{ marginTop: 12, color: colors.textPrimary }}>{error || "Loading..."}</div>
       )}
       <div style={{ marginTop: 24 }}>
-        <a href="/login" style={{ marginRight: 12 }}>Login</a>
-        <a href="/signup">Signup</a>
+        <a href="/login" style={{ marginRight: 12, color: colors.primary, textDecoration: 'none' }}>Login</a>
+        <a href="/signup" style={{ color: colors.primary, textDecoration: 'none' }}>Signup</a>
       </div>
     </div>
   );
 }
+
+

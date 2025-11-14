@@ -6,10 +6,10 @@ services:
     container_name: stocks_postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: test
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: stocks_db
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db_create_script.txt:/docker-entrypoint-initdb.d/01-init.sql
@@ -30,7 +30,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASSWORD: test
+      DB_PASSWORD: postgres
       DB_NAME: stocks_db
       FINNHUB_TOKEN: ${FINNHUB_TOKEN}
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-prod}
