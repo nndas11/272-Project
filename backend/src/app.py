@@ -5,6 +5,7 @@ from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 import websocket  # from websocket-client
+import yfinance as yf
 import psycopg2
 import bcrypt
 import jwt
@@ -90,6 +91,7 @@ class FinnhubThread(threading.Thread):
     def on_open(self, ws):
         for s in self.symbols:
             ws.send(json.dumps({"type":"subscribe", "symbol": s}))
+        print(f"[Finnhub] Subscribed to: {', '.join(self.symbols)}")
         _broadcast({"type":"status","msg":"connected","at":int(time.time()*1000)})
 
     def on_message(self, ws, message):
@@ -103,6 +105,8 @@ class FinnhubThread(threading.Thread):
                     if sym and price is not None:
                         latest_quotes[sym] = {"symbol": sym, "price": price, "ts": ts}
                         _broadcast({"type":"quote","symbol": sym, "price": price, "ts": ts})
+                        if int(time.time()) % 30 == 0:
+                            print(f"[Finnhub] {sym} trade price={price}")
         except Exception:
             pass
 
@@ -114,6 +118,56 @@ class FinnhubThread(threading.Thread):
 
 ws_thread = FinnhubThread(FINNHUB_TOKEN, SYMBOLS)
 ws_thread.start()
+
+# ---- Fallback Poller using yfinance ----
+class YFinancePoller(threading.Thread):
+    def __init__(self, symbols, interval=60):
+        super().__init__(daemon=True)
+        self.symbols = [s for s in symbols if s and ':' not in s]  # skip non-yahoo formats
+        self.interval = interval
+        self._stop = threading.Event()
+
+    def run(self):
+        self._cycle(initial=True)
+        while not self._stop.is_set():
+            self._cycle(initial=False)
+            for _ in range(self.interval):
+                if self._stop.is_set():
+                    break
+                time.sleep(1)
+
+    def _cycle(self, initial=False):
+        try:
+            for sym in self.symbols:
+                try:
+                    tk = yf.Ticker(sym)
+                    info = tk.fast_info if hasattr(tk, 'fast_info') else {}
+                    price = None
+                    if 'lastPrice' in info:
+                        price = info['lastPrice']
+                    else:
+                        hist = tk.history(period='1d', interval='1m')
+                        if not hist.empty:
+                            price = float(hist.iloc[-1]['Close'])
+                    if price is not None:
+                        ts = int(time.time()*1000)
+                        prev = latest_quotes.get(sym, {}).get('price')
+                        latest_quotes[sym] = {"symbol": sym, "price": float(price), "ts": ts}
+                        if prev != price or initial:
+                            _broadcast({"type":"quote","symbol": sym, "price": float(price), "ts": ts})
+                        if initial:
+                            print(f"[YF] Initial {sym} price={price}")
+                except Exception as e:
+                    if int(time.time()) % 300 == 0 or initial:
+                        print(f"[YF] Skip {sym}: {e}")
+        except Exception as e:
+            print(f"[YF] Poll cycle error: {e}")
+
+    def stop(self):
+        self._stop.set()
+
+poller = YFinancePoller(SYMBOLS, interval=30)
+poller.start()
 
 # ---- Flask routes ----
 @app.route('/')
@@ -730,8 +784,10 @@ def sell_stock():
 # graceful shutdown
 def _shutdown(*_):
     ws_thread.stop()
+    poller.stop()
     os._exit(0)
 atexit.register(ws_thread.stop)
+atexit.register(poller.stop)
 signal.signal(signal.SIGINT, _shutdown)
 signal.signal(signal.SIGTERM, _shutdown)
 
