@@ -6,7 +6,7 @@ services:
     container_name: stocks_postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: test
       POSTGRES_DB: stocks_db
     ports:
       - "5432:5432"
@@ -30,9 +30,10 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_PASSWORD: test
       DB_NAME: stocks_db
-      FINNHUB_TOKEN: ${FINNHUB_TOKEN}
+      # Finnhub API token (previously empty when referencing host env)
+      FINNHUB_TOKEN: d483861r01qk80bj7i30d483861r01qk80bj7i3g
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-prod}
       SYMBOLS: ${SYMBOLS:-AAPL,MSFT,GOOGL,TSLA,BINANCE:BTCUSDT,BINANCE:ETHUSDT,BINANCE:SOLUSDT}
     ports:
